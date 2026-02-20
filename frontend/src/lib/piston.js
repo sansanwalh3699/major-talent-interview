@@ -1,61 +1,54 @@
-// WE ARE SWITCHING TO JUDGE0 BECAUSE PISTON IS BLOCKED
-const JUDGE0_API = "https://judge0-ce.p.rapidapi.com/submissions";
+// WE ARE SWITCHING TO CODEX API (FREE, NO KEY, NO CARD REQUIRED)
+const CODEX_API = "https://api.codex.jaagrav.in";
 
-// Judge0 uses ID numbers: Java=62, Python=71, JS=63
-const LANGUAGE_IDS = {
-  javascript: 63,
-  python: 71,
-  java: 62,
+// Map your languages to Codex specific strings
+// java -> java, python -> py, javascript -> js
+const LANGUAGE_MAP = {
+  javascript: "js",
+  python: "py",
+  java: "java",
 };
 
 export async function executeCode(language, code) {
   try {
-    const languageId = LANGUAGE_IDS[language];
+    const mappedLanguage = LANGUAGE_MAP[language];
 
-    if (!languageId) {
+    if (!mappedLanguage) {
       return {
         success: false,
         error: `Unsupported language: ${language}`,
       };
     }
 
-    // 1. Create the submission
-    // query params: base64_encoded=false & wait=true (so we get the result immediately)
-    const response = await fetch(`${JUDGE0_API}?base64_encoded=false&wait=true`, {
+    // 1. Send code to Codex
+    const response = await fetch(CODEX_API, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        // 👇 PASTE YOUR KEY HERE 👇
-        "X-RapidAPI-Key": import.meta.env.VITE_JUDGE0_KEY,
-        "X-RapidAPI-Host": "judge0-ce.p.rapidapi.com",
       },
       body: JSON.stringify({
-        language_id: languageId,
-        source_code: code,
-        stdin: "",
+        code: code,
+        language: mappedLanguage,
+        input: "", // Optional: if you have user input
       }),
     });
 
+    // 2. Handle API Errors
     if (!response.ok) {
-       const errText = await response.text();
-       return { success: false, error: `API Error: ${response.status} ${errText}` };
+       return { success: false, error: `API Error: ${response.status}` };
     }
 
     const data = await response.json();
 
-    // 2. Handle Errors (Compilation or Runtime)
-    if (data.stderr) {
-      return { success: false, output: data.stdout, error: data.stderr };
-    }
-    
-    if (data.compile_output) { 
-        return { success: false, error: data.compile_output };
+    // 3. Format the output
+    // Codex returns { output: "...", error: "..." }
+    if (data.error && data.error.length > 0) {
+      return { success: false, output: data.output, error: data.error };
     }
 
-    // 3. Success
     return {
       success: true,
-      output: data.stdout || "No output",
+      output: data.output ? data.output : "No output",
     };
 
   } catch (error) {
