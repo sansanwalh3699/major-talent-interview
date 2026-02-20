@@ -1,84 +1,67 @@
-// Piston API is a service for code execution
+// WE ARE SWITCHING TO JUDGE0 BECAUSE PISTON IS BLOCKED
+const JUDGE0_API = "https://judge0-ce.p.rapidapi.com/submissions";
 
-const PISTON_API = "https://emkc.org/api/v2/piston";
-
-const LANGUAGE_VERSIONS = {
-  javascript: { language: "javascript", version: "18.15.0" },
-  python: { language: "python", version: "3.10.0" },
-  java: { language: "java", version: "15.0.2" },
+// Judge0 uses ID numbers: Java=62, Python=71, JS=63
+const LANGUAGE_IDS = {
+  javascript: 63,
+  python: 71,
+  java: 62,
 };
 
-/**
- * @param {string} language - programming language
- * @param {string} code - source code to executed
- * @returns {Promise<{success:boolean, output?:string, error?: string}>}
- */
 export async function executeCode(language, code) {
   try {
-    const languageConfig = LANGUAGE_VERSIONS[language];
+    const languageId = LANGUAGE_IDS[language];
 
-    if (!languageConfig) {
+    if (!languageId) {
       return {
         success: false,
         error: `Unsupported language: ${language}`,
       };
     }
 
-    const response = await fetch(`${PISTON_API}/execute`, {
+    // 1. Create the submission
+    // query params: base64_encoded=false & wait=true (so we get the result immediately)
+    const response = await fetch(`${JUDGE0_API}?base64_encoded=false&wait=true`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        // 👇 PASTE YOUR KEY HERE 👇
+        "X-RapidAPI-Key": import.meta.env.VITE_JUDGE0_KEY,
+        "X-RapidAPI-Host": "judge0-ce.p.rapidapi.com",
       },
       body: JSON.stringify({
-        language: languageConfig.language,
-        version: languageConfig.version,
-        files: [
-          {
-            name: `main.${getFileExtension(language)}`,
-            content: code,
-          },
-        ],
+        language_id: languageId,
+        source_code: code,
+        stdin: "",
       }),
     });
 
     if (!response.ok) {
-      return {
-        success: false,
-        error: `HTTP error! status: ${response.status}`,
-      };
+       const errText = await response.text();
+       return { success: false, error: `API Error: ${response.status} ${errText}` };
     }
 
     const data = await response.json();
 
-    const output = data.run.output || "";
-    const stderr = data.run.stderr || "";
-
-    if (stderr) {
-      return {
-        success: false,
-        output: output,
-        error: stderr,
-      };
+    // 2. Handle Errors (Compilation or Runtime)
+    if (data.stderr) {
+      return { success: false, output: data.stdout, error: data.stderr };
+    }
+    
+    if (data.compile_output) { 
+        return { success: false, error: data.compile_output };
     }
 
+    // 3. Success
     return {
       success: true,
-      output: output || "No output",
+      output: data.stdout || "No output",
     };
+
   } catch (error) {
     return {
       success: false,
       error: `Failed to execute code: ${error.message}`,
     };
   }
-}
-
-function getFileExtension(language) {
-  const extensions = {
-    javascript: "js",
-    python: "py",
-    java: "java",
-  };
-
-  return extensions[language] || "txt";
 }
